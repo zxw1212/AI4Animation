@@ -5,7 +5,9 @@ using System.Collections.Generic;
 using AI4Animation;
 using System;
 using UltimateIK;
-
+/**
+* 该文件是一个用于虚拟现实（VR）系统的跟踪系统。它主要负责跟踪头部和手部控制器的位置和姿态，并将这些信息应用于虚拟角色的运动和姿态控制。
+*/
 namespace SIGGRAPH_2024 {
     public class TrackingSystem : MonoBehaviour {
         public enum ID {Head, LeftWrist, RightWrist}
@@ -13,6 +15,7 @@ namespace SIGGRAPH_2024 {
 
         [Header("Tracking")]
         public bool AutoUpdate = false;
+        // 导入的运动数据
         public MotionAsset Asset = null;
         public float AssetTimestamp {get; private set;}
         public bool AssetMirrored {get; private set;}
@@ -49,7 +52,9 @@ namespace SIGGRAPH_2024 {
 
         [Header("Prediction")]
         public float Framerate = 30f;
+        // 关键的两个网络: TrackingNetwork: 估计当前上半身和根部状态, 会导入.onnx文件并管理对应的网络
         public SentisNetwork TrackingNetwork;
+        // 关键的两个网络: FutureNetwork: 预测未来上半身和根部状态, 会导入.onnx文件并管理对应的网络
         public SentisNetwork FutureNetwork;
         public Actor Actor;
         public bool EulerIntegration = true;
@@ -169,6 +174,7 @@ namespace SIGGRAPH_2024 {
             }
         }
 
+        // 加载新的运动数据, 并设置相关参数
         public void SetMotionAsset(MotionAsset asset) {
             Asset = asset;
             AssetTimestamp = 0f;
@@ -185,6 +191,7 @@ namespace SIGGRAPH_2024 {
             StyleSeries = asset.GetModule<StyleModule>().ExtractSeries(StyleSeries, AssetTimestamp, AssetMirrored) as StyleModule.Series;
         }
 
+        // 更新当前状态估计和未来状态预测
         public void Iterate() {
             if(Actor != null) {
                 Actor.gameObject.SetActive(ShowActor);
@@ -208,11 +215,11 @@ namespace SIGGRAPH_2024 {
                 AssetTimestamp = Mathf.Repeat(AssetTimestamp + Time.fixedDeltaTime, Asset.GetTotalTime());
             }
 
-            //Update Tracker State
+            //Update Tracker State, 维护一个TrackerHistory队列, 用于存储Tracker的位置和方向信息
             TrackerHistory.Increment(0, TrackerHistory.Pivot);
             void UpdateTracker(Tracker tracker, MotionModule.Trajectory trajectory) {
                 tracker.Device.gameObject.SetActive(ShowTrackers);
-                tracker.Device.SetTransformation(tracker.GetDeviceTransformation(Scale));
+                tracker.Device.SetTransformation(tracker.GetDeviceTransformation(Scale)); // 会读取当前帧Tracker的位置和方向信息
                 trajectory.Transformations[TimeSeries.Pivot] = tracker.GetBoneTransformation(Scale);
                 trajectory.Velocities[TimeSeries.Pivot] = CalculateVelocities ? (trajectory.GetPosition(TimeSeries.Pivot) - trajectory.GetPosition(TimeSeries.Pivot-1)) / Time.fixedDeltaTime : tracker.GetBoneVelocity(Scale);
             }
@@ -253,6 +260,7 @@ namespace SIGGRAPH_2024 {
                 RWIK.Joints.Last().Transform.rotation = targetRightWrist.GetRotation();
             }
 
+            // 从估计的当前上本身和根部状态中提取信息, 并更新到RootSeries 和 MotionSeries中,供FutureNetwork的输入端
             RootSeries.Increment(0, RootSeries.Pivot);
             RootSeries.Transformations[RootSeries.Pivot] = Root;
             RootSeries.Velocities[RootSeries.Pivot] = (RootSeries.GetPosition(RootSeries.Pivot) - RootSeries.GetPosition(RootSeries.Pivot-1)) / Time.fixedDeltaTime;
@@ -268,11 +276,14 @@ namespace SIGGRAPH_2024 {
             PredictFuture(FutureNetwork);
         }
 
+        // TrackingNetwork的在线推理过程
         private void PredictTracking(SentisNetwork network) {
             if(network.GetSession() == null){return;}
 
             using(SentisNetwork.Input input = network.GetSession().GetInput("X")) {
+                // using结束时,资源释放
                 Matrix4x4 reference = Root;
+                // 获取tracker的位置和方向信息,相对当前根部.
                 foreach(MotionModule.Trajectory trajectory in TrackerHistory.Trajectories) {
                     for(int i=0; i<TrackerHistory.SampleCount; i++) {
                         Matrix4x4 m = trajectory.Transformations[i].TransformationTo(reference);
@@ -288,14 +299,18 @@ namespace SIGGRAPH_2024 {
             network.RunSession();
 
             using(SentisNetwork.Output output = network.GetSession().GetOutput("Y")) {
+                // using结束时,资源释放
                 Matrix4x4 reference = Root;
                 Vector3[] seed = Actor.GetBonePositions();
+                // 获取根部的位置和方向变化量输出
                 Root = reference * output.ReadRootDelta();
                 Actor.GetRoot().SetTransformation(Root);
+                // 获取上半身骨骼节点的位置和方向,速度输出
                 for(int i=0; i<Actor.Bones.Length; i++) {
                     Vector3 position = output.ReadVector3().PositionFrom(Root);
                     Quaternion rotation = output.ReadRotation3D().RotationFrom(Root);
                     Vector3 velocity = output.ReadVector3().DirectionFrom(Root);
+                    // 如果EulerIntegration, 使用网络位置输出和速度输出进行插值,否则只使用网络位置输出
                     position = Vector3.Lerp(position, seed[i] + velocity * Time.fixedDeltaTime, EulerIntegration ? 0.5f : 0f);
                     Actor.Bones[i].SetPosition(position);
                     Actor.Bones[i].SetRotation(rotation);
@@ -305,6 +320,7 @@ namespace SIGGRAPH_2024 {
             }
         }
 
+        // FutureNetwork的在线推理过程        
         private void PredictFuture(SentisNetwork network) {
             if(network.GetSession() == null){return;}
 

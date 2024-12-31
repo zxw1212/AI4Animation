@@ -147,6 +147,17 @@ namespace SIGGRAPH_2024 {
             Y.Finish();
         }
 
+        // 关于时间说明:
+        // 1. container.Timestamp: 当前帧的全局时间戳，用作时间序列的基准时间
+        // 2. container.TimeSeries.PivotKey: 当前帧在时间序列中的索引，用于区分过去和未来帧
+        // 3. container.TimeSeries.GetKey(i).Timestamp: 第 i 帧相对于当前帧的时间偏移量, i<PivotKey时是负数
+        // 4. setup.Pipeline.GetEditor().TargetDeltaTime: 固定时间步长，通常与目标帧率相关，表示每帧的时间间隔
+        
+        /**
+        * TrackerBodyPredictor:
+        * 1. 输入: 时间窗内过去的tracker轨迹数据，包括位置、方向、速度
+        * 2. 输出: 当前的root位移和旋转, 及上半身骨骼节点的位置、方向、速度
+        */
         private class TrackerBodyPredictor {
             public static void Export(ExportPipeline setup, AssetPipeline.Data X, AssetPipeline.Data Y, float timestamp) {
                 Container current = new Container(setup, timestamp);
@@ -177,6 +188,11 @@ namespace SIGGRAPH_2024 {
             }
         }
 
+        /**
+        * FutureBodyPredictor:
+        * 1. 输入: 时间窗内过去的上半身骨骼节点的位置、方向、速度, 及root的位置、方向、速度[可以来自TrackerBodyPredictor]
+        * 2. 输出: 未来的root位移和旋转, 及上半身骨骼节点的位置、方向、速度
+        */
         private class FutureBodyPredictor {
             public static void Export(ExportPipeline setup, AssetPipeline.Data X, AssetPipeline.Data Y, float timestamp) {
                 Container container = new Container(setup, timestamp);
