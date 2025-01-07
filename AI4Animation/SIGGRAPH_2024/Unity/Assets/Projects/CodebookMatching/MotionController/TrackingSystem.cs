@@ -284,7 +284,10 @@ namespace SIGGRAPH_2024 {
                 // using结束时,资源释放
                 Matrix4x4 reference = Root;
                 // 获取tracker的位置和方向信息,相对当前根部.
+                Debug.Log("===============3 point input================");
+                Debug.Log("root: \n" + reference);
                 foreach(MotionModule.Trajectory trajectory in TrackerHistory.Trajectories) {
+                    // print test: 3条轨迹: 顺序: 头, 左手, 右手
                     for(int i=0; i<TrackerHistory.SampleCount; i++) {
                         Matrix4x4 m = trajectory.Transformations[i].TransformationTo(reference);
                         Vector3 v = trajectory.Velocities[i].DirectionTo(reference);
@@ -293,6 +296,9 @@ namespace SIGGRAPH_2024 {
                         input.Feed(m.GetUp());
                         input.Feed(v);
                     }
+                    // Debug.Log("3 point input matrix4: \n" + trajectory.Transformations[0]);
+                    // Debug.Log("3 point input v: \n" + trajectory.Velocities[0]);
+                    Debug.Log("3 point input matrix4: \n" + trajectory.Transformations[0].TransformationTo(reference));
                 }
             }
 
@@ -305,16 +311,21 @@ namespace SIGGRAPH_2024 {
                 // 获取根部的位置和方向变化量输出
                 Root = reference * output.ReadRootDelta();
                 Actor.GetRoot().SetTransformation(Root);
-                // 获取上半身骨骼节点的位置和方向,速度输出
+                // 获取上半身骨骼节点的位置和方向,速度输出, 相对于world
+                Debug.Log("===============bones output================");
+                Debug.Log("Root: \n" + Root);
                 for(int i=0; i<Actor.Bones.Length; i++) {
                     Vector3 position = output.ReadVector3().PositionFrom(Root);
                     Quaternion rotation = output.ReadRotation3D().RotationFrom(Root);
                     Vector3 velocity = output.ReadVector3().DirectionFrom(Root);
                     // 如果EulerIntegration, 使用网络位置输出和速度输出进行插值,否则只使用网络位置输出
-                    position = Vector3.Lerp(position, seed[i] + velocity * Time.fixedDeltaTime, EulerIntegration ? 0.5f : 0f);
+                    // position = Vector3.Lerp(position, seed[i] + velocity * Time.fixedDeltaTime, EulerIntegration ? 0.5f : 0f);
                     Actor.Bones[i].SetPosition(position);
                     Actor.Bones[i].SetRotation(rotation);
                     Actor.Bones[i].SetVelocity(velocity);
+                    Debug.Log("bone output position: \n" + position);
+                    Debug.Log("bone output rotation: \n" + rotation);
+                    Debug.Log("bone output velocity: \n" + velocity);
                 }
                 Actor.RestoreAlignment();
             }
